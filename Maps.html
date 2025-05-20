@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenStreetMap Route Planner</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+
+    <style>
+        /* CSS Variables for colors */
+        :root {
+            --background-color: #ffffff;
+            --text-color: #333333;
+            --container-bg-color: #f9f9f9;
+            --border-color: #ccc;
+            --input-bg-color: #ffffff;
+            --list-item-bg-color: #ffffff;
+            --list-item-border-color: #eee;
+            --message-box-bg: #f0f0f0;
+            --message-box-text: #333;
+            --button-primary-bg: #4CAF50;
+            --button-primary-hover-bg: #367c39;
+            --button-share-bg: #007bff; /* New color for share button */
+            --button-share-hover-bg: #0056b3;
+            --button-danger-text: #dc3545;
+            --button-danger-hover-text: #c82333;
+        }
+
+        /* Dark Mode styles */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --background-color: #1a1a1a;
+                --text-color: #e0e0e0;
+                --container-bg-color: #2a2a2a;
+                --border-color: #555;
+                --input-bg-color: #333333;
+                --list-item-bg-color: #3a3a3a;
+                --list-item-border-color: #444;
+                --message-box-bg: #3a3a3a;
+                --message-box-text: #e0e0e0;
+                --button-primary-bg: #4CAF50;
+                --button-primary-hover-bg: #367c39;
+                --button-share-bg: #1a73e8; /* Slightly different blue for dark mode share */
+                --button-share-hover-bg: #1558b3;
+                --button-danger-text: #ff6b6b;
+                --button-danger-hover-text: #ff4c4c;
+            }
+        }
+
+        body {
+            font-family: sans-serif;
+            padding: 15px;
+            text-align: center;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+            margin: 0;
+        }
+
+        h1, h2 {
+            color: var(--text-color);
+        }
+
+        #search-container {
+            margin-bottom: 15px;
+            display: flex; /* Helps center the geocoder control */
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Main geocoder container (when collapsed or uncollapsed) */
+        .leaflet-control-geocoder {
+            background-color: var(--input-bg-color); /* Match input background */
+            border: 1px solid var(--border-color); /* Add border to the whole bar */
+            border-radius: 8px; /* Apply rounded corners */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+            max-width: 500px;
+            width: auto; /* Adjust width based on content */
+            margin: 0 auto; /* Center the entire control */
+            overflow: hidden; /* Ensure rounded corners clip children */
+            display: flex; /* Make it a flex container to position icon */
+            align-items: center; /* Vertically align icon and form */
+            padding: 0; /* Remove default padding from control */
+        }
+
+        /* Specific styling for the initial collapsed icon */
+        .leaflet-control-geocoder-icon {
+            background-color: var(--button-primary-bg);
+            color: white;
+            border: none;
+            padding: 12px 15px;
+            cursor: pointer;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            transition: background-color 0.2s;
+            order: 2; /* Position icon on the right */
+            height: auto; /* Allow height to adjust */
+            border-radius: 0 8px 8px 0; /* Rounded right corners only for the icon */
+        }
+        .leaflet-control-geocoder-icon:hover {
+            background-color: var(--button-primary-hover-bg);
+        }
+
+        /* Styles for the search form (input + internal search button) when it's open */
+        .leaflet-control-geocoder-form {
+            display: flex; /* Flexbox for input and internal button */
+            flex-grow: 1; /* Allow it to take up most of the space */
+            border: none; /* No internal border */
+            padding: 0;
+            margin: 0;
+            height: auto;
+        }
+
+        .leaflet-control-geocoder-form input {
+            flex-grow: 1; /* Input takes remaining space */
+            padding: 12px;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            font-size: 16px;
+            text-overflow: ellipsis;
+            background-color: var(--input-bg-color);
+            color: var(--text-color);
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        /* Internal search button (after typing) */
+        .leaflet-control-geocoder-form .leaflet-control-geocoder-search {
+            background-color: var(--button-primary-bg);
+            color: white;
+            border: none;
+            padding: 12px 15px;
+            cursor: pointer;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            transition: background-color 0.2s;
+            order: 2; /* Position this button on the right */
+            border-radius: 0 8px 8px 0; /* Rounded right corners only for this button */
+        }
+        .leaflet-control-geocoder-form .leaflet-control-geocoder-search:hover {
+            background-color: var(--button-primary-hover-bg);
+        }
+
+        /* Adjust the input's border-radius when it's the only visible part (if not using collapsed:false) */
+        /* Since we're using collapsed:true, this might not be strictly necessary, but good for robustness */
+        .leaflet-control-geocoder.leaflet-control-geocoder-expanded .leaflet-control-geocoder-form input {
+            border-radius: 8px 0 0 8px; /* Rounded left corners for input when expanded */
+        }
+
+
+        .leaflet-control-geocoder-alternatives {
+            background-color: var(--input-bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            color: var(--text-color);
+            margin-top: 5px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            text-align: left;
+            position: absolute; /* Position suggestions relative to the main container */
+            width: calc(100% - 30px); /* Adjust width to match parent container's effective width */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000; /* Ensure it's above other elements */
+        }
+        .leaflet-control-geocoder-alternatives li {
+            color: var(--text-color);
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+        .leaflet-control-geocoder-alternatives li:hover {
+            background-color: var(--list-item-border-color);
+        }
+
+
+        #map-container {
+            width: 100%;
+            max-width: 700px;
+            height: 300px;
+            margin: 20px auto;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+
+        #point-list-container {
+            text-align: left;
+            margin: 20px auto;
+            width: 100%;
+            max-width: 700px;
+            border: 1px solid var(--border-color);
+            padding: 15px;
+            border-radius: 8px;
+            background-color: var(--container-bg-color);
+            box-sizing: border-box;
+        }
+
+        #point-list-container h2 {
+            margin-top: 0;
+            font-size: 1.2em;
+        }
+
+        #point-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        #point-list li {
+            background-color: var(--list-item-bg-color);
+            border: 1px solid var(--list-item-border-color);
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            cursor: grab;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.95em;
+        }
+
+        #point-list li.dragging {
+            opacity: 0.6;
+            border: 2px dashed var(--button-primary-bg);
+        }
+
+        #point-list li span {
+            flex-grow: 1;
+            padding-right: 10px;
+            word-break: break-word;
+        }
+
+        #point-list li button {
+            background: none;
+            border: none;
+            color: var(--button-danger-text);
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 1.4em;
+            margin-left: 10px;
+            padding: 5px;
+            line-height: 1;
+        }
+
+        #point-list li button:hover {
+            color: var(--button-danger-hover-text);
+        }
+
+        #controls {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        #controls button {
+            padding: 15px 25px;
+            background-color: var(--button-primary-bg);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1em;
+            flex-grow: 1;
+            max-width: 300px;
+        }
+
+        #controls button:hover {
+            background-color: var(--button-primary-hover-bg);
+        }
+
+        /* Specific style for the new Share button */
+        #controls button.share-button {
+            background-color: var(--button-share-bg);
+        }
+        #controls button.share-button:hover {
+            background-color: var(--button-share-hover-bg);
+        }
+
+        #message-box {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--message-box-bg);
+            color: var(--message-box-text);
+            padding: 15px 20px;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            max-width: 90%;
+            word-break: break-word;
+            font-size: 0.95em;
+            box-sizing: border-box;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        #message-box.show {
+            display: flex;
+        }
+        #message-box .link-display {
+            margin-top: 8px;
+            font-size: 0.8em;
+            text-align: center;
+            color: var(--message-box-text);
+            opacity: 0.8;
+        }
+
+        /* Adjustments for larger screens (optional, but good practice) */
+        @media (min-width: 768px) {
+            body {
+                padding: 20px;
+            }
+            #map-container {
+                height: 400px;
+            }
+            #point-list li {
+                font-size: 1em;
+            }
+            #point-list li button {
+                font-size: 1.2em;
+            }
+            #controls button {
+                padding: 10px 20px;
+                font-size: 1em;
+                flex-grow: 0;
+            }
+        }
+    </style>
+    <script>
+        var map;
+        var points = []; // Stores { lat, lng, name, marker }
+        var userLocation = null; // {latitude, longitude}
+        var currentDraggedItem = null; // For drag and drop
+        var routingControl = null; // To manage OSRM routing line
+        var geocoderControl = null; // Keep a reference to the geocoder control
+
+        // Function to display messages to the user
+        function showMessage(message, duration = 3000, urlToDisplay = '') {
+            var messageBox = document.getElementById('message-box');
+            messageBox.innerHTML = message;
+
+            if (urlToDisplay) {
+                var linkDisplay = document.createElement('div');
+                linkDisplay.classList.add('link-display');
+                linkDisplay.textContent = "URL: " + urlToDisplay;
+                messageBox.appendChild(linkDisplay);
+            }
+
+            messageBox.classList.add('show');
+            setTimeout(function() {
+                messageBox.classList.remove('show');
+            }, duration);
+        }
+
+        // Function to initialize the map
+        function initMap() {
+            // Check if Leaflet is loaded
+            if (typeof L === 'undefined') {
+                showMessage('Leaflet.js is not loaded. Please check your internet connection.', 5000);
+                return;
+            }
+
+            map = L.map('map-container').setView([37.7749, -122.4194], 12); // Default: San Francisco
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            // Add Leaflet Geocoder for search functionality (uses Nominatim by default)
+            geocoderControl = L.Control.geocoder({ // Assign to global variable
+                placeholder: 'Search for a location',
+                collapsed: true, // IMPORTANT: Set to true for initial icon-only display
+                defaultMarkGeocoded: false // Don't add a default marker from the geocoder
+            });
+
+            // Crucial step: Add to map first, then move its DOM element to the desired container.
+            // This ensures all Leaflet control setup happens correctly before we reposition it.
+            geocoderControl.addTo(map);
+            var searchContainer = document.getElementById('search-container');
+            if (geocoderControl.getContainer() && searchContainer) {
+                searchContainer.appendChild(geocoderControl.getContainer());
+            }
+
+            // Event listener for map clicks
+            map.on('click', function(e) {
+                geocodeLatLng(e.latlng);
+            });
+
+            // Listen for geocode results to add points
+            geocoderControl.on('markgeocode', function(e) {
+                var latlng = e.geocode.center;
+                addPoint(latlng, e.geocode.name);
+                map.setView(latlng, 15); // Zoom to the added point
+                // Clear the input after adding a point
+                var inputElement = geocoderControl.getContainer().querySelector('input');
+                if (inputElement) {
+                    inputElement.value = '';
+                    inputElement.blur(); // Remove focus from the input
+                }
+                // Also, collapse the geocoder after a successful search
+                geocoderControl.collapse();
+            });
+
+
+            showMessage("Click the search icon or map to add points.", 5000);
+            getUserLocation(); // Still good to get initial location for map centering and potential OSRM routing
+        }
+
+        // Function to reverse geocode LatLng to get an address/name using Nominatim
+        function geocodeLatLng(latlng) {
+            const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`;
+
+            fetch(nominatimUrl)
+                .then(response => response.json())
+                .then(data => {
+                    let name = data.display_name || `Lat: ${latlng.lat.toFixed(4)}, Lng: ${latlng.lng.toFixed(4)}`;
+                    addPoint(latlng, name);
+                })
+                .catch(error => {
+                    console.error('Error geocoding:', error);
+                    addPoint(latlng, `Lat: ${latlng.lat.toFixed(4)}, Lng: ${latlng.lng.toFixed(4)}`);
+                    showMessage('Failed to get address for this location.', 3000);
+                });
+        }
+
+        // Function to add a point to the map and the points array
+        function addPoint(latlng, name) {
+            var marker = L.marker(latlng).addTo(map)
+                .bindPopup(name)
+                .openPopup();
+
+            points.push({
+                lat: latlng.lat,
+                lng: latlng.lng,
+                name: name,
+                marker: marker
+            });
+            console.log('Point added:', name, latlng.lat, latlng.lng);
+            updatePointList();
+            updateRoute(); // Update the route whenever a point is added
+        }
+
+        // Function to remove a specific point
+        function removePoint(index) {
+            if (index > -1 && index < points.length) {
+                map.removeLayer(points[index].marker);
+                points.splice(index, 1);
+                updatePointList();
+                updateRoute(); // Update the route whenever a point is removed
+            }
+        }
+
+        // Drag and Drop Logic (adapted for general list items)
+        function handleDragStart(e) {
+            this.style.opacity = '0.4';
+            currentDraggedItem = this;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.innerHTML);
+        }
+
+        function handleDragEnd(e) {
+            this.style.opacity = '1';
+            currentDraggedItem = null;
+            [].forEach.call(document.querySelectorAll('#point-list li'), function (item) {
+                item.classList.remove('dragging');
+            });
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (this !== currentDraggedItem) {
+                this.classList.add('dragging');
+            }
+            return false;
+        }
+
+        function handleDragEnter(e) {
+            if (this !== currentDraggedItem) {
+                this.classList.add('dragging');
+            }
+        }
+
+        function handleDragLeave(e) {
+            this.classList.remove('dragging');
+        }
+
+        function handleDrop(e) {
+            e.stopPropagation();
+            if (currentDraggedItem !== this) {
+                var fromIndex = parseInt(currentDraggedItem.dataset.index);
+                var toIndex = parseInt(this.dataset.index);
+
+                var [movedItem] = points.splice(fromIndex, 1);
+                points.splice(toIndex, 0, movedItem);
+
+                updatePointList();
+                updateRoute(); // Update the route after reordering
+                showMessage("Points reordered manually.", 2000);
+            }
+            return false;
+        }
+
+        // Function to update the point list on the webpage
+        function updatePointList() {
+            var pointListElement = document.getElementById('point-list');
+            pointListElement.innerHTML = '';
+
+            if (points.length === 0) {
+                pointListElement.innerHTML = '<p>No points selected yet.</p>';
+                return;
+            }
+
+            points.forEach(function(point, index) {
+                var listItem = document.createElement('li');
+                listItem.setAttribute('draggable', 'true');
+                listItem.dataset.index = index; // Store original index for drag/drop logic
+
+                // Update marker content (e.g., label with number)
+                point.marker.bindPopup(`<b>${index + 1}.</b> ${point.name}`).openPopup();
+                // Optionally update marker icon here if you want numbered markers
+
+                listItem.innerHTML = `
+                    <span>
+                        <strong>${index + 1}.</strong> ${point.name || `Lat: ${point.lat.toFixed(4)}, Lng: ${point.lng.toFixed(4)}`}
+                    </span>
+                    <button onclick="removePoint(${index})">X</button>
+                `;
+
+                listItem.addEventListener('dragstart', handleDragStart, false);
+                listItem.addEventListener('dragenter', handleDragEnter, false);
+                listItem.addEventListener('dragover', handleDragOver, false);
+                listItem.addEventListener('dragleave', handleDragLeave, false);
+                listItem.addEventListener('drop', handleDrop, false);
+                listItem.addEventListener('dragend', handleDragEnd, false);
+
+                pointListElement.appendChild(listItem);
+            });
+        }
+
+        // Function to get user's current location (for map centering and initial OSRM route)
+        function getUserLocation() {
+            if (navigator.geolocation) {
+                showMessage("Attempting to get your current location...");
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        showMessage("Your location has been set for internal routing (if used).");
+                        console.log("User location set to:", userLocation);
+                        map.setView([userLocation.lat, userLocation.lng], 15);
+                        // Add a marker for user's location
+                        L.circleMarker([userLocation.lat, userLocation.lng], {
+                            radius: 8,
+                            color: 'blue',
+                            fillColor: '#30f',
+                            fillOpacity: 0.8
+                        }).addTo(map).bindPopup("Your Current Location").openPopup();
+                        updateRoute(); // Update route once user location is known
+                    },
+                    function(error) {
+                        switch (error.code) {
+                            case error.PERMISSION_DENIED:
+                                showMessage("User denied the request for geolocation.");
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                showMessage("Location information is unavailable.");
+                                break;
+                            case error.TIMEOUT:
+                                showMessage("The request to get user location timed out. Please refresh and try again.");
+                                break;
+                            case error.UNKNOWN_ERROR:
+                                showMessage("An unknown error occurred while getting your location.");
+                                break;
+                        }
+                    }
+                );
+            } else {
+                showMessage("Geolocation is not supported by this browser.");
+            }
+        }
+
+        // Function to update the route on the map using OSRM
+        function updateRoute() {
+            if (routingControl) {
+                map.removeControl(routingControl);
+                routingControl = null;
+            }
+
+            let routeWaypoints = [];
+
+            // If userLocation is set, it will be the *first* waypoint for OSRM,
+            // but not directly used in the Google Maps URL 'origin' if we want G Maps to find it.
+            if (userLocation) {
+                routeWaypoints.push(L.latLng(userLocation.lat, userLocation.lng));
+            }
+
+            points.forEach(p => {
+                const pointLatLng = L.latLng(p.lat, p.lng);
+                let isDuplicateOfUserLocation = false;
+                if (userLocation) {
+                    const userLatLng = L.latLng(userLocation.lat, userLocation.lng);
+                    // Use a small tolerance for floating point comparisons
+                    if (userLatLng.distanceTo(pointLatLng) < 1) { // 1 meter tolerance
+                        isDuplicateOfUserLocation = true;
+                    }
+                }
+
+                if (!isDuplicateOfUserLocation) {
+                    routeWaypoints.push(pointLatLng);
+                }
+            });
+
+            if (routeWaypoints.length < 2) {
+                if (routingControl) {
+                    map.removeControl(routingControl);
+                    routingControl = null;
+                }
+                return;
+            }
+
+            routingControl = L.Routing.control({
+                waypoints: routeWaypoints,
+                router: L.routing.osrmv1({
+                    serviceUrl: 'https://router.project-osrm.org/route/v1' // Public OSRM demo server
+                }),
+                lineOptions: {
+                    styles: [{color: 'blue', opacity: 0.6, weight: 6}]
+                },
+                createMarker: function(i, waypoint, n) {
+                    return null;
+                },
+                show: false,
+                addWaypoints: false,
+                draggableWaypoints: false,
+                altLineOptions: {
+                    styles: [{color: 'transparent'}]
+                }
+            }).addTo(map);
+
+            routingControl.on('routingerror', function(e) {
+                console.error("Routing error:", e.error);
+                showMessage("Could not calculate route. " + (e.error.message || e.error.code), 5000);
+            });
+            showMessage("Route updated!", 1500);
+        }
+
+        // Function to build a Google Maps URL for directions with drive mode
+        function buildGoogleMapsURL() {
+            let origin = 'current location'; // This tells Google Maps to use the device's current location
+            let destination = '';
+            let waypoints = [];
+
+            // We only care about the manually added points for the Google Maps URL,
+            // as the origin will always be "current location" now.
+            const userAddedPoints = points.slice(); // Create a copy of the manually added points
+
+            if (userAddedPoints.length === 0) {
+                return null; // Need at least one destination if origin is 'current location'
+            }
+
+            destination = encodeURIComponent(userAddedPoints[userAddedPoints.length - 1].name || `${userAddedPoints[userAddedPoints.length - 1].lat},${userAddedPoints[userAddedPoints.length - 1].lng}`);
+
+            // All points before the last one are waypoints
+            for (let i = 0; i < userAddedPoints.length - 1; i++) {
+                waypoints.push(encodeURIComponent(userAddedPoints[i].name || `${userAddedPoints[i].lat},${userAddedPoints[i].lng}`));
+            }
+
+            // Google Maps URL format for directions with API parameters
+            let googleMapsUrl = `https://www.google.com/maps/dir/${origin}/${waypoints.join('/')}${waypoints.length > 0 ? '/' : ''}${destination}`;
+
+            // Add the parameter for drive mode navigation (though `dir_action=navigate` sometimes works better)
+            googleMapsUrl += `?travelmode=driving&dir_action=navigate`;
+
+            return googleMapsUrl;
+        }
+
+
+        // Function to share the generated Google Maps link via Web Share API
+        function shareLink() {
+            const url = buildGoogleMapsURL();
+            if (!url) {
+                showMessage("Please add at least one destination point to generate a Google Maps link for directions (starting from your current location).", 4000);
+                return;
+            }
+
+            if (navigator.share) {
+                navigator.share({
+                    title: 'My Planned Route (Drive Mode)',
+                    text: 'Check out this route I planned on Google Maps! It should open directly in drive mode from your current location.',
+                    url: url
+                })
+                .then(() => showMessage('Route shared successfully!', 3000))
+                .catch((error) => {
+                    if (error.name === 'AbortError') {
+                        showMessage('Sharing cancelled.', 2000);
+                    } else {
+                        console.error('Error sharing:', error);
+                        showMessage('Failed to share route. Your device may not support direct sharing, or an error occurred. The link has been copied to your clipboard as a fallback.', 5000);
+                        // Fallback to copy if sharing fails
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(url).then(() => {
+                                console.log("Link copied as fallback for sharing after error.");
+                            });
+                        }
+                    }
+                });
+            } else {
+                showMessage('Your device does not support direct sharing. The link has been generated and copied to your clipboard (if supported) for manual pasting:', 8000, url);
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(url).then(() => {
+                        console.log("Link copied as fallback for sharing.");
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy link even as fallback:', err);
+                        showMessage('Your device does not support direct sharing, and automatic clipboard copying failed. Please copy the link manually:', 10000, url);
+                    });
+                } else {
+                    showMessage('Your device does not support direct sharing or automatic clipboard copying. Please manually copy the URL below:', 10000, url);
+                }
+            }
+        }
+
+        // Initialize the map when the page loads
+        document.addEventListener('DOMContentLoaded', initMap);
+
+    </script>
+</head>
+<body>
+    <h1>Route Planner</h1>
+    <div id="message-box"></div>
+
+    <div id="search-container">
+        </div>
+
+    <div id="map-container"></div>
+
+    <div id="point-list-container">
+        <h2>Selected Points (Drag to Reorder)</h2>
+        <ul id="point-list">
+            <p>No points selected yet.</p>
+        </ul>
+    </div>
+
+    <div id="controls">
+        <button class="share-button" onclick="shareLink()">Share on Google Maps Drive</button>
+    </div>
+</body>
+</html>
